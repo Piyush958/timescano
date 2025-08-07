@@ -1,0 +1,36 @@
+entrypoint = "main.py"
+modules = ["python-3.11"]
+
+[nix]
+channel = "stable-25_05"
+packages = ["libGL", "libGLU"]
+
+[unitTest]
+language = "python3"
+
+[gitHubImport]
+requiredFiles = [".replit", "replit.nix"]
+
+[deployment]
+run = ["python3", "main.py"]
+deploymentTarget = "cloudrun"
+
+[[ports]]
+localPort = 3000
+externalPort = 3000
+
+[[ports]]
+localPort = 5000
+externalPort = 80
+
+[workflows]
+runButton = "Start Flask App"
+
+[[workflows.workflow]]
+name = "Start Flask App"
+author = 43677727
+mode = "sequential"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python main.py"
