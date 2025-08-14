@@ -28,33 +28,30 @@ import uuid
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
+logger.setLevel(logging.DEBUG)
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SESSION_SECRET", "timescano_secret_key_2025")
 socketio = SocketIO(
     app,
-    cors_allowed_origins="https://timescano.onrender.com",
+    cors_allowed_origins="*",  # Allow all origins for local testing
     logger=True,
     engineio_logger=True,
-    ping_timeout=30,
-    ping_interval=10,
-    async_mode='gevent',
+    ping_timeout=60,
+    ping_interval=25,
+    async_mode='threading',
     transports=['websocket', 'polling'],
-    max_http_buffer_size=25 * 1024 * 1024
-)
+    max_http_buffer_size=25 * 1024 * 1024)
 
 # Redis client with retry logic
 def connect_redis():
     try:
-        client = redis.Redis(
-            host=os.environ.get('REDIS_HOST', 'redis'),
-            port=6379,
-            db=0,
-            decode_responses=True,
-            socket_timeout=5,
-            socket_connect_timeout=5
-        )
+        client = redis.Redis(host='localhost',
+                             port=6379,
+                             db=0,
+                             decode_responses=True,
+                             socket_timeout=5,
+                             socket_connect_timeout=5)
         client.ping()
         logger.info("Connected to Redis successfully")
         return client
@@ -67,8 +64,8 @@ def connect_redis():
 redis_client = connect_redis()
 
 # Celery configuration
-app.config['CELERY_BROKER_URL'] = f"redis://{os.environ.get('REDIS_HOST', 'redis')}:6379/0"
-app.config['CELERY_RESULT_BACKEND'] = f"redis://{os.environ.get('REDIS_HOST', 'redis')}:6379/0"
+app.config['CELERY_BROKER_URL'] = 'redis://localhost:6379/0'
+app.config['CELERY_RESULT_BACKEND'] = 'redis://localhost:6379/0'
 
 def make_celery(app):
     celery = Celery(app.import_name,
@@ -81,7 +78,6 @@ celery = make_celery(app)
 
 # Dictionary to store frame queues per session
 frame_queues = defaultdict(list)
-MAX_FRAME_QUEUE_SIZE = 50  # Reduced to save memory
 
 def format_duration(seconds):
     if not seconds or isinstance(seconds, str):
@@ -481,11 +477,26 @@ def admin_session_detail(session_id):
     video_path = formatted_session['video_path']
     cache_key = f"video_exists:{session_id}"
     if redis_client:
-        has_video = redis_client.get(cache_key) == "true"
-    if not has_video and video_path and os.path.exists(video_path):
-        has_video = True
-        if redis_client:
-            redis_client.setex(cache_key, 3600, "true")
+        try:
+            cached_result = redis_client.get(cache_key)
+            has_video = cached_result == "true" if cached_result else False
+            if not cached_result and video_path and os.path.exists(
+                    video_path) and os.path.getsize(video_path) > 0:
+                has_video = True
+                redis_client.setex(cache_key, 3600, "true")
+            elif not cached_result:
+                video_dir = os.path.join(os.getcwd(), "videos")
+                potential_mp4_path = os.path.join(video_dir,
+                                                  f"{session_id}.mp4")
+                if os.path.exists(potential_mp4_path) and os.path.getsize(
+                        potential_mp4_path) > 0:
+                    has_video = True
+                    redis_client.setex(cache_key, 3600, "true")
+        except Exception as e:
+            logger.error(f"Redis error checking video existence: {str(e)}")
+    else:
+        if video_path and os.path.exists(video_path) and os.path.getsize(video_path) > 0:
+            has_video = True
     return render_template('admin_session_detail.html',
                            session=formatted_session,
                            breaks=breaks,
@@ -493,97 +504,97 @@ def admin_session_detail(session_id):
                            screenshots=screenshots,
                            total_screenshots=total_screenshots,
                            page=page,
-                           has_video=has_video,
-                           is_admin=session.get('is_admin', False),
-                           organization_id=organization_id)
+                           is_admin=session.get('is_admin', False) or session.get('is_superuser', False),
+                           has_video=has_video)
 
-@app.route('/download/<path:filename>')
-def download_file(filename):
-    try:
-        return send_from_directory('videos', filename, as_attachment=True)
-    except Exception as e:
-        logger.error(f"Error downloading file {filename}: {str(e)}")
-        flash('File not found', 'error')
-        return redirect(url_for('admin_dashboard'))
-
-@app.route('/delete/session/<session_id>')
-def delete_session_route(session_id):
+@app.route('/export_csv')
+def export_csv():
     if 'user_id' not in session or not (session.get('is_admin', False) or session.get('is_superuser', False)):
-        flash('Access denied', 'error')
+        flash('Access denied. Only admins or superusers can export CSV.', 'error')
         return redirect(url_for('login'))
+    
     organization_id = session.get('organization_id')
-    if delete_session(session_id, organization_id):
-        flash('Session deleted successfully', 'success')
-    else:
-        flash('Error deleting session', 'error')
-    return redirect(url_for('admin_dashboard' if session.get('is_admin', False) else 'superuser_dashboard'))
-
-@app.route('/delete/screenshot/<screenshot_id>')
-def delete_screenshot_route(screenshot_id):
-    if 'user_id' not in session or not (session.get('is_admin', False) or session.get('is_superuser', False)):
-        flash('Access denied', 'error')
-        return redirect(url_for('login'))
-    organization_id = session.get('organization_id')
-    screenshot = screenshots_col.find_one({"_id": ObjectId(screenshot_id), "organization_id": organization_id})
-    if not screenshot:
-        flash('Screenshot not found', 'error')
+    if not organization_id:
+        flash('No organization ID found.', 'error')
         return redirect(url_for('admin_dashboard'))
-    session_id = screenshot.get('session_id')
-    if delete_screenshot(screenshot_id, organization_id):
-        flash('Screenshot deleted successfully', 'success')
-    else:
-        flash('Error deleting screenshot', 'error')
-    return redirect(url_for('admin_session_detail', session_id=session_id))
-
-@app.route('/export/<session_id>')
-def export_session(session_id):
-    if 'user_id' not in session or not (session.get('is_admin', False) or session.get('is_superuser', False)):
-        flash('Access denied', 'error')
-        return redirect(url_for('login'))
-    organization_id = session.get('organization_id')
-    session_data = get_session_by_id(session_id, organization_id)
-    if not session_data:
-        flash('Session not found', 'error')
-        return redirect(url_for('admin_dashboard'))
-    breaks = get_breaks_by_session(session_id, organization_id)
-    activities = get_activities_by_session(session_id, organization_id)
+    
+    user_id = session.get('user_id')
+    sessions = sessions_col.find({"organization_id": organization_id}).sort("start_time", -1)
+    
     output = StringIO()
     writer = csv.writer(output)
-    writer.writerow(['Session ID', 'User ID', 'Start Time', 'End Time', 'Elapsed Time', 'Idle Time'])
-    writer.writerow([
-        str(session_data['_id']),
-        session_data.get('user_id', 'Unknown'),
-        format_datetime(session_data.get('start_time', '')),
-        format_datetime(session_data.get('end_time', '')),
-        format_duration(session_data.get('elapsed_time', 0)),
-        format_duration(session_data.get('idle_time', 0))
-    ])
-    writer.writerow([])
-    writer.writerow(['Breaks'])
-    writer.writerow(['Start', 'End', 'Duration'])
-    for break_item in breaks:
+    writer.writerow(["Start Time", "End Time", "Elapsed", "Idle Time", "User ID"])
+    for sess in sessions:
         writer.writerow([
-            break_item.get('start', 'N/A'),
-            break_item.get('end', 'N/A'),
-            format_duration(break_item.get('duration', 0))
+            sess.get("start_time", ""),
+            sess.get("end_time", ""),
+            format_duration(sess.get("elapsed_time", 0)),
+            format_duration(sess.get("idle_time", 0)),
+            sess.get("user_id", "")
         ])
-    writer.writerow([])
-    writer.writerow(['Activities'])
-    writer.writerow(['Time', 'Activity'])
-    for activity in activities:
-        writer.writerow([
-            activity.get('time', 'N/A'),
-            activity.get('activity', 'N/A')
-        ])
-    response = make_response(output.getvalue())
-    response.headers['Content-Disposition'] = f'attachment; filename=session_{session_id}.csv'
-    response.headers['Content-type'] = 'text/csv'
+    
+    response = Response(
+        output.getvalue(),
+        mimetype='text/csv',
+        headers={"Content-Disposition": "attachment;filename=sessions_export.csv"}
+    )
     return response
 
-@app.route('/export_csv/<session_id>')
-def export_csv(session_id):
-    """Alias for export_session for backward compatibility"""
-    return export_session(session_id)
+@app.route('/delete_session/<session_id>', methods=['POST'])
+def delete_session_route(session_id):
+    if 'user_id' not in session or not (session.get('is_admin', False) or session.get('is_superuser', False)):
+        flash('Access denied. Only admins or superusers can delete sessions.', 'error')
+        return redirect(url_for('login'))
+    
+    organization_id = session.get('organization_id')
+    if not organization_id:
+        flash('No organization ID found.', 'error')
+        return redirect(url_for('superuser_dashboard'))
+    
+    try:
+        success = delete_session(session_id, organization_id)
+        if success:
+            flash('Session deleted successfully.', 'success')
+        else:
+            flash('Failed to delete session.', 'error')
+    except Exception as e:
+        logger.error(f"Error deleting session {session_id}: {str(e)}")
+        flash('Error deleting session.', 'error')
+    
+    return redirect(url_for('superuser_dashboard'))
+
+@app.route('/delete_screenshot/<session_id>/<screenshot_id>', methods=['POST'])
+def delete_screenshot(session_id, screenshot_id):
+    if 'user_id' not in session or not (session.get('is_admin', False) or session.get('is_superuser', False)):
+        flash('Access denied. Only admins or superusers can delete screenshots.', 'error')
+        return redirect(url_for('login'))
+    
+    organization_id = session.get('organization_id')
+    if not organization_id:
+        flash('No organization ID found.', 'error')
+        return redirect(url_for('admin_session_detail', session_id=session_id))
+    
+    try:
+        success = delete_screenshot(screenshot_id, organization_id)
+        if success:
+            flash('Screenshot deleted successfully.', 'success')
+        else:
+            flash('Failed to delete screenshot.', 'error')
+    except Exception as e:
+        logger.error(f"Error deleting screenshot {screenshot_id} for session {session_id}: {str(e)}")
+        flash('Error deleting screenshot.', 'error')
+    
+    return redirect(url_for('admin_session_detail', session_id=session_id))
+
+@app.route('/videos/<path:filename>')
+def serve_video(filename):
+    try:
+        return send_from_directory(os.path.join(os.getcwd(), "videos"),
+                                   filename)
+    except Exception as e:
+        logger.error(f"Error serving video {filename}: {str(e)}")
+        flash('Error serving video', 'error')
+        return redirect(url_for('admin_dashboard'))
 
 @celery.task
 def process_video(session_id, frames, organization_id):
@@ -598,7 +609,8 @@ def process_video(session_id, frames, organization_id):
             )
             return
         organization = organizations_col.find_one({"_id": organization_id})
-        if not organization or not organization.get('subscription_active', False):
+        if not organization or not organization.get('subscription_active',
+                                                    False):
             logger.info(
                 f"Skipping video processing for non-subscribed organization {organization_id} in session {session_id}"
             )
@@ -615,33 +627,37 @@ def process_video(session_id, frames, organization_id):
         logger.info(
             f"Processing video for session {session_id} with {len(frames)} frames in organization {organization_id}"
         )
-        elapsed_seconds = session_data.get('elapsed_time', len(frames) * (1 / 15))
+        elapsed_seconds = session_data.get('elapsed_time',
+                                           len(frames) * (1 / 15))
         frame_count = len(frames)
         if frame_count == 0:
             logger.error(f"No frames available for session {session_id}")
             return
-        calculated_fps = max(0.2, min(frame_count / elapsed_seconds, 15.0)) if elapsed_seconds > 0 else 1.0
+        calculated_fps = max(0.2, min(frame_count / elapsed_seconds,
+                                      15.0)) if elapsed_seconds > 0 else 1.0
         fourcc = cv2.VideoWriter_fourcc(*'DIVX')
-        out = cv2.VideoWriter(temp_video_path, fourcc, calculated_fps, (640, 360))
+        out = cv2.VideoWriter(temp_video_path, fourcc, calculated_fps,
+                              (1280, 720))
         if not out.isOpened():
             logger.error(
                 f"Failed to initialize VideoWriter for session {session_id} in organization {organization_id}"
             )
             return
         for frame in frames:
-            resized_frame = cv2.resize(frame, (640, 360), interpolation=cv2.INTER_LINEAR)
-            out.write(resized_frame)
+            out.write(frame)
         out.release()
         cmd = [
             'ffmpeg', '-i', temp_video_path, '-c:v', 'libx264', '-c:a', 'aac',
-            '-r', str(calculated_fps), '-y', video_path_mp4
+            '-r',
+            str(calculated_fps), '-y', video_path_mp4
         ]
         result = subprocess.run(cmd,
                                 stdout=subprocess.PIPE,
                                 stderr=subprocess.PIPE,
                                 text=True,
                                 check=False)
-        if result.returncode == 0 and os.path.exists(video_path_mp4) and os.path.getsize(video_path_mp4) > 0:
+        if result.returncode == 0 and os.path.exists(
+                video_path_mp4) and os.path.getsize(video_path_mp4) > 0:
             sessions_col.update_one(
                 {
                     "_id": ObjectId(session_id),
@@ -659,7 +675,8 @@ def process_video(session_id, frames, organization_id):
             logger.error(
                 f"FFmpeg conversion failed for session {session_id} in organization {organization_id}: {result.stderr}"
             )
-            if os.path.exists(temp_video_path) and os.path.getsize(temp_video_path) > 0:
+            if os.path.exists(temp_video_path) and os.path.getsize(
+                    temp_video_path) > 0:
                 sessions_col.update_one(
                     {
                         "_id": ObjectId(session_id),
@@ -668,7 +685,8 @@ def process_video(session_id, frames, organization_id):
                         "video_path": temp_video_path
                     }})
                 if redis_client:
-                    redis_client.setex(f"video_exists:{session_id}", 3600, "true")
+                    redis_client.setex(f"video_exists:{session_id}", 3600,
+                                       "true")
                 logger.info(
                     f"Retained temp AVI as video_path for session {session_id} in organization {organization_id}"
                 )
@@ -689,15 +707,16 @@ def process_video_fallback(session_id, frames, organization_id):
             )
             return
         organization = organizations_col.find_one({"_id": organization_id})
-        if not organization or not organization.get('subscription_active', False):
+        if not organization or not organization.get('subscription_active',
+                                                    False):
             logger.info(
                 f"Skipping video processing for non-subscribed organization {organization_id} in session {session_id} (fallback)"
             )
             return
         video_dir = os.path.join(os.getcwd(), "videos")
         os.makedirs(video_dir, exist_ok=True)
-        temp_video_path = os.path.join(os.getcwd(), "videos", f"temp_{session_id}.avi")
-        video_path_mp4 = os.path.join(os.getcwd(), "videos", f"{session_id}.mp4")
+        temp_video_path = os.path.join(video_dir, f"temp_{session_id}.avi")
+        video_path_mp4 = os.path.join(video_dir, f"{session_id}.mp4")
         if not frames:
             logger.warning(
                 f"No frames to process for session {session_id} in fallback for organization {organization_id}"
@@ -706,33 +725,37 @@ def process_video_fallback(session_id, frames, organization_id):
         logger.info(
             f"Processing video for session {session_id} with {len(frames)} frames in fallback for organization {organization_id}"
         )
-        elapsed_seconds = session_data.get('elapsed_time', len(frames) * (1 / 15))
+        elapsed_seconds = session_data.get('elapsed_time',
+                                           len(frames) * (1 / 15))
         frame_count = len(frames)
         if frame_count == 0:
             logger.error(f"No frames available for session {session_id}")
             return
-        calculated_fps = max(0.2, min(frame_count / elapsed_seconds, 15.0)) if elapsed_seconds > 0 else 1.0
+        calculated_fps = max(0.2, min(frame_count / elapsed_seconds,
+                                      15.0)) if elapsed_seconds > 0 else 1.0
         fourcc = cv2.VideoWriter_fourcc(*'DIVX')
-        out = cv2.VideoWriter(temp_video_path, fourcc, calculated_fps, (640, 360))
+        out = cv2.VideoWriter(temp_video_path, fourcc, calculated_fps,
+                              (1280, 720))
         if not out.isOpened():
             logger.error(
                 f"Failed to initialize VideoWriter for session {session_id} in fallback for organization {organization_id}"
             )
             return
         for frame in frames:
-            resized_frame = cv2.resize(frame, (640, 360), interpolation=cv2.INTER_LINEAR)
-            out.write(resized_frame)
+            out.write(frame)
         out.release()
         cmd = [
             'ffmpeg', '-i', temp_video_path, '-c:v', 'libx264', '-c:a', 'aac',
-            '-r', str(calculated_fps), '-y', video_path_mp4
+            '-r',
+            str(calculated_fps), '-y', video_path_mp4
         ]
         result = subprocess.run(cmd,
                                 stdout=subprocess.PIPE,
                                 stderr=subprocess.PIPE,
                                 text=True,
                                 check=False)
-        if result.returncode == 0 and os.path.exists(video_path_mp4) and os.path.getsize(video_path_mp4) > 0:
+        if result.returncode == 0 and os.path.exists(
+                video_path_mp4) and os.path.getsize(video_path_mp4) > 0:
             sessions_col.update_one(
                 {
                     "_id": ObjectId(session_id),
@@ -750,7 +773,8 @@ def process_video_fallback(session_id, frames, organization_id):
             logger.error(
                 f"FFmpeg conversion failed for session {session_id} in fallback for organization {organization_id}: {result.stderr}"
             )
-            if os.path.exists(temp_video_path) and os.path.getsize(temp_video_path) > 0:
+            if os.path.exists(temp_video_path) and os.path.getsize(
+                    temp_video_path) > 0:
                 sessions_col.update_one(
                     {
                         "_id": ObjectId(session_id),
@@ -759,7 +783,8 @@ def process_video_fallback(session_id, frames, organization_id):
                         "video_path": temp_video_path
                     }})
                 if redis_client:
-                    redis_client.setex(f"video_exists:{session_id}", 3600, "true")
+                    redis_client.setex(f"video_exists:{session_id}", 3600,
+                                       "true")
                 logger.info(
                     f"Retained temp AVI as video_path for session {session_id} in fallback for organization {organization_id}"
                 )
@@ -830,16 +855,18 @@ def on_join(data):
     logger.info(f"Join session request: {data}, client SID: {request.sid}, current rooms: {rooms()}")
     session_id = data.get('session_id')
     user_id = data.get('user_id')
-    organization_id = data.get('organization_id') or session.get('organization_id')
     
-    if not all([session_id, user_id, organization_id]):
+    if not all([session_id, user_id]):
         logger.error(f"Invalid join_session data: {data}")
         emit('joined_session', {
             'status': 'error',
-            'message': 'Missing session_id, user_id, or organization_id'
+            'message': 'Missing session_id or user_id'
         })
         return
 
+    # Get organization_id from Flask session or data
+    organization_id = session.get('organization_id') if 'user_id' in session else data.get('organization_id')
+    
     logger.info(f"User {user_id} attempting to join session {session_id} (SID: {request.sid}) in organization {organization_id}")
     
     # Join the room first
@@ -847,13 +874,13 @@ def on_join(data):
     logger.info(f"Client {request.sid} joined room {session_id}, current rooms: {rooms()}")
     
     # Verify session exists
-    session_data = sessions_col.find_one({"_id": ObjectId(session_id), "organization_id": organization_id})
+    session_data = sessions_col.find_one({"_id": ObjectId(session_id)})
     if not session_data:
         emit('joined_session', {
             'status': 'error',
             'message': 'Session not found'
         })
-        logger.warning(f"Session {session_id} not found for organization {organization_id}")
+        logger.warning(f"Session {session_id} not found")
         return
 
     # Check if session is active
@@ -891,21 +918,17 @@ def handle_live_frame(data):
         session_id = data.get('session_id')
         frame = data.get('frame')
         timestamp = data.get('timestamp')
-        organization_id = data.get('organization_id') or session.get('organization_id')
         
-        logger.info(f"Received live_frame request: user_id={user_id}, session_id={session_id}, frame_size={len(frame) if frame else 0}, timestamp={timestamp}, organization_id={organization_id}")
+        logger.info(f"Received live_frame request: user_id={user_id}, session_id={session_id}, frame_size={len(frame) if frame else 0}, timestamp={timestamp}")
         
-        if not all([user_id, session_id, frame, timestamp, organization_id]):
-            logger.error(f"Invalid live_frame data - missing required fields: user_id={bool(user_id)}, session_id={bool(session_id)}, frame={bool(frame)}, timestamp={bool(timestamp)}, organization_id={bool(organization_id)}")
+        if not all([user_id, session_id, frame, timestamp]):
+            logger.error(f"Invalid live_frame data - missing required fields: user_id={bool(user_id)}, session_id={bool(session_id)}, frame={bool(frame)}, timestamp={bool(timestamp)}")
             return
 
-        # Verify session exists and is active
-        session_data = sessions_col.find_one({"_id": ObjectId(session_id), "organization_id": organization_id})
+        # Verify session exists (simplified check)
+        session_data = sessions_col.find_one({"_id": ObjectId(session_id)})
         if not session_data:
-            logger.warning(f"Rejected frame for unknown session: {session_id} in organization {organization_id}")
-            return
-        if session_data.get('end_time'):
-            logger.warning(f"Rejected frame for ended session: {session_id} in organization {organization_id}")
+            logger.warning(f"Rejected frame for unknown session: {session_id}")
             return
 
         # Process frame for video storage
@@ -914,12 +937,9 @@ def handle_live_frame(data):
             np_arr = np.frombuffer(frame_data, np.uint8)
             frame_decoded = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
             if frame_decoded is not None:
-                frame_decoded = cv2.resize(frame_decoded, (640, 360), interpolation=cv2.INTER_LINEAR)
-                if len(frame_queues[session_id]) < MAX_FRAME_QUEUE_SIZE:
-                    frame_queues[session_id].append(frame_decoded)
-                    logger.debug(f"Processed and stored frame for session {session_id}, shape: {frame_decoded.shape}")
-                else:
-                    logger.warning(f"Frame queue for session {session_id} is full, dropping frame")
+                frame_decoded = cv2.resize(frame_decoded, (1280, 720), interpolation=cv2.INTER_LINEAR)
+                frame_queues[session_id].append(frame_decoded)
+                logger.debug(f"Processed and stored frame for session {session_id}, shape: {frame_decoded.shape}")
             else:
                 logger.error(f"Failed to decode frame for session {session_id}")
         except Exception as decode_error:
@@ -947,6 +967,8 @@ def on_pong(data):
     logger.debug(f"Received ping with data: {data}")
     emit('pong', {'status': 'alive', 'time': datetime.now().isoformat()})
 
+
+    
 @socketio.on('punch_in')
 def handle_punch_in(data):
     try:
