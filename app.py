@@ -81,7 +81,7 @@ celery = make_celery(app)
 
 # Dictionary to store frame queues per session
 frame_queues = defaultdict(list)
-MAX_FRAME_QUEUE_SIZE = 100
+MAX_FRAME_QUEUE_SIZE = 50  # Reduced to save memory
 
 def format_duration(seconds):
     if not seconds or isinstance(seconds, str):
@@ -494,7 +494,8 @@ def admin_session_detail(session_id):
                            total_screenshots=total_screenshots,
                            page=page,
                            has_video=has_video,
-                           is_admin=session.get('is_admin', False))
+                           is_admin=session.get('is_admin', False),
+                           organization_id=organization_id)
 
 @app.route('/download/<path:filename>')
 def download_file(filename):
@@ -579,6 +580,11 @@ def export_session(session_id):
     response.headers['Content-type'] = 'text/csv'
     return response
 
+@app.route('/export_csv/<session_id>')
+def export_csv(session_id):
+    """Alias for export_session for backward compatibility"""
+    return export_session(session_id)
+
 @celery.task
 def process_video(session_id, frames, organization_id):
     try:
@@ -616,14 +622,14 @@ def process_video(session_id, frames, organization_id):
             return
         calculated_fps = max(0.2, min(frame_count / elapsed_seconds, 15.0)) if elapsed_seconds > 0 else 1.0
         fourcc = cv2.VideoWriter_fourcc(*'DIVX')
-        out = cv2.VideoWriter(temp_video_path, fourcc, calculated_fps, (640, 360))  # Reduced resolution
+        out = cv2.VideoWriter(temp_video_path, fourcc, calculated_fps, (640, 360))
         if not out.isOpened():
             logger.error(
                 f"Failed to initialize VideoWriter for session {session_id} in organization {organization_id}"
             )
             return
         for frame in frames:
-            resized_frame = cv2.resize(frame, (640, 360), interpolation=cv2.INTER_LINEAR)  # Resize frame
+            resized_frame = cv2.resize(frame, (640, 360), interpolation=cv2.INTER_LINEAR)
             out.write(resized_frame)
         out.release()
         cmd = [
@@ -707,14 +713,14 @@ def process_video_fallback(session_id, frames, organization_id):
             return
         calculated_fps = max(0.2, min(frame_count / elapsed_seconds, 15.0)) if elapsed_seconds > 0 else 1.0
         fourcc = cv2.VideoWriter_fourcc(*'DIVX')
-        out = cv2.VideoWriter(temp_video_path, fourcc, calculated_fps, (640, 360))  # Reduced resolution
+        out = cv2.VideoWriter(temp_video_path, fourcc, calculated_fps, (640, 360))
         if not out.isOpened():
             logger.error(
                 f"Failed to initialize VideoWriter for session {session_id} in fallback for organization {organization_id}"
             )
             return
         for frame in frames:
-            resized_frame = cv2.resize(frame, (640, 360), interpolation=cv2.INTER_LINEAR)  # Resize frame
+            resized_frame = cv2.resize(frame, (640, 360), interpolation=cv2.INTER_LINEAR)
             out.write(resized_frame)
         out.release()
         cmd = [
@@ -908,7 +914,7 @@ def handle_live_frame(data):
             np_arr = np.frombuffer(frame_data, np.uint8)
             frame_decoded = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
             if frame_decoded is not None:
-                frame_decoded = cv2.resize(frame_decoded, (640, 360), interpolation=cv2.INTER_LINEAR)  # Reduced resolution
+                frame_decoded = cv2.resize(frame_decoded, (640, 360), interpolation=cv2.INTER_LINEAR)
                 if len(frame_queues[session_id]) < MAX_FRAME_QUEUE_SIZE:
                     frame_queues[session_id].append(frame_decoded)
                     logger.debug(f"Processed and stored frame for session {session_id}, shape: {frame_decoded.shape}")
