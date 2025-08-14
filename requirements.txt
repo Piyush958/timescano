@@ -1,0 +1,1 @@
+flask flask-socketio redis celery pymongo opencv-python numpy python-engineio python-socketio
