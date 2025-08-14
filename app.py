@@ -696,8 +696,8 @@ def process_video_fallback(session_id, frames, organization_id):
             return
         video_dir = os.path.join(os.getcwd(), "videos")
         os.makedirs(video_dir, exist_ok=True)
-        temp_video_path = os.path.join(video_dir, f"temp_{session_id}.avi")
-        video_path_mp4 = os.path.join(video_dir, f"{session_id}.mp4")
+        temp_video_path = os.path.join(os.getcwd(), "videos", f"temp_{session_id}.avi")
+        video_path_mp4 = os.path.join(os.getcwd(), "videos", f"{session_id}.mp4")
         if not frames:
             logger.warning(
                 f"No frames to process for session {session_id} in fallback for organization {organization_id}"
