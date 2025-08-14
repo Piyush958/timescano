@@ -48,7 +48,7 @@ socketio = SocketIO(
 def connect_redis():
     try:
         client = redis.Redis(
-            host='redis',
+            host=os.environ.get('REDIS_HOST', 'redis'),
             port=6379,
             db=0,
             decode_responses=True,
@@ -67,8 +67,8 @@ def connect_redis():
 redis_client = connect_redis()
 
 # Celery configuration
-app.config['CELERY_BROKER_URL'] = 'redis://redis:6379/0'
-app.config['CELERY_RESULT_BACKEND'] = 'redis://redis:6379/0'
+app.config['CELERY_BROKER_URL'] = f"redis://{os.environ.get('REDIS_HOST', 'redis')}:6379/0"
+app.config['CELERY_RESULT_BACKEND'] = f"redis://{os.environ.get('REDIS_HOST', 'redis')}:6379/0"
 
 def make_celery(app):
     celery = Celery(app.import_name,
@@ -356,7 +356,7 @@ def superuser_user_detail(user_id):
             'end_time': format_datetime(session_item.get('end_time', '')),
             'elapsed_time':
             format_duration(session_item.get('elapsed_time', 0)),
-            'idle_time': format_duration(session_item.get('elapsed_time', 0)),
+            'idle_time': format_duration(session_item.get('idle_time', 0)),
             'video_path': session_item.get('video_path', '')
         }
         formatted_sessions.append(formatted_session)
@@ -616,14 +616,15 @@ def process_video(session_id, frames, organization_id):
             return
         calculated_fps = max(0.2, min(frame_count / elapsed_seconds, 15.0)) if elapsed_seconds > 0 else 1.0
         fourcc = cv2.VideoWriter_fourcc(*'DIVX')
-        out = cv2.VideoWriter(temp_video_path, fourcc, calculated_fps, (1280, 720))
+        out = cv2.VideoWriter(temp_video_path, fourcc, calculated_fps, (640, 360))  # Reduced resolution
         if not out.isOpened():
             logger.error(
                 f"Failed to initialize VideoWriter for session {session_id} in organization {organization_id}"
             )
             return
         for frame in frames:
-            out.write(frame)
+            resized_frame = cv2.resize(frame, (640, 360), interpolation=cv2.INTER_LINEAR)  # Resize frame
+            out.write(resized_frame)
         out.release()
         cmd = [
             'ffmpeg', '-i', temp_video_path, '-c:v', 'libx264', '-c:a', 'aac',
