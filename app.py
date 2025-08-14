@@ -356,7 +356,7 @@ def superuser_user_detail(user_id):
             'end_time': format_datetime(session_item.get('end_time', '')),
             'elapsed_time':
             format_duration(session_item.get('elapsed_time', 0)),
-            'idle_time': format_duration(session_item.get('idle_time', 0)),
+            'idle_time': format_duration(session_item.get('elapsed_time', 0)),
             'video_path': session_item.get('video_path', '')
         }
         formatted_sessions.append(formatted_session)
@@ -706,14 +706,15 @@ def process_video_fallback(session_id, frames, organization_id):
             return
         calculated_fps = max(0.2, min(frame_count / elapsed_seconds, 15.0)) if elapsed_seconds > 0 else 1.0
         fourcc = cv2.VideoWriter_fourcc(*'DIVX')
-        out = cv2.VideoWriter(temp_video_path, fourcc, calculated_fps, (1280, 720))
+        out = cv2.VideoWriter(temp_video_path, fourcc, calculated_fps, (640, 360))  # Reduced resolution
         if not out.isOpened():
             logger.error(
                 f"Failed to initialize VideoWriter for session {session_id} in fallback for organization {organization_id}"
             )
             return
         for frame in frames:
-            out.write(frame)
+            resized_frame = cv2.resize(frame, (640, 360), interpolation=cv2.INTER_LINEAR)  # Resize frame
+            out.write(resized_frame)
         out.release()
         cmd = [
             'ffmpeg', '-i', temp_video_path, '-c:v', 'libx264', '-c:a', 'aac',
@@ -822,18 +823,16 @@ def on_join(data):
     logger.info(f"Join session request: {data}, client SID: {request.sid}, current rooms: {rooms()}")
     session_id = data.get('session_id')
     user_id = data.get('user_id')
+    organization_id = data.get('organization_id') or session.get('organization_id')
     
-    if not all([session_id, user_id]):
+    if not all([session_id, user_id, organization_id]):
         logger.error(f"Invalid join_session data: {data}")
         emit('joined_session', {
             'status': 'error',
-            'message': 'Missing session_id or user_id'
+            'message': 'Missing session_id, user_id, or organization_id'
         })
         return
 
-    # Get organization_id from Flask session or data
-    organization_id = session.get('organization_id') if 'user_id' in session else data.get('organization_id')
-    
     logger.info(f"User {user_id} attempting to join session {session_id} (SID: {request.sid}) in organization {organization_id}")
     
     # Join the room first
@@ -841,13 +840,13 @@ def on_join(data):
     logger.info(f"Client {request.sid} joined room {session_id}, current rooms: {rooms()}")
     
     # Verify session exists
-    session_data = sessions_col.find_one({"_id": ObjectId(session_id)})
+    session_data = sessions_col.find_one({"_id": ObjectId(session_id), "organization_id": organization_id})
     if not session_data:
         emit('joined_session', {
             'status': 'error',
             'message': 'Session not found'
         })
-        logger.warning(f"Session {session_id} not found")
+        logger.warning(f"Session {session_id} not found for organization {organization_id}")
         return
 
     # Check if session is active
@@ -885,17 +884,21 @@ def handle_live_frame(data):
         session_id = data.get('session_id')
         frame = data.get('frame')
         timestamp = data.get('timestamp')
+        organization_id = data.get('organization_id') or session.get('organization_id')
         
-        logger.info(f"Received live_frame request: user_id={user_id}, session_id={session_id}, frame_size={len(frame) if frame else 0}, timestamp={timestamp}")
+        logger.info(f"Received live_frame request: user_id={user_id}, session_id={session_id}, frame_size={len(frame) if frame else 0}, timestamp={timestamp}, organization_id={organization_id}")
         
-        if not all([user_id, session_id, frame, timestamp]):
-            logger.error(f"Invalid live_frame data - missing required fields: user_id={bool(user_id)}, session_id={bool(session_id)}, frame={bool(frame)}, timestamp={bool(timestamp)}")
+        if not all([user_id, session_id, frame, timestamp, organization_id]):
+            logger.error(f"Invalid live_frame data - missing required fields: user_id={bool(user_id)}, session_id={bool(session_id)}, frame={bool(frame)}, timestamp={bool(timestamp)}, organization_id={bool(organization_id)}")
             return
 
-        # Verify session exists
-        session_data = sessions_col.find_one({"_id": ObjectId(session_id)})
+        # Verify session exists and is active
+        session_data = sessions_col.find_one({"_id": ObjectId(session_id), "organization_id": organization_id})
         if not session_data:
-            logger.warning(f"Rejected frame for unknown session: {session_id}")
+            logger.warning(f"Rejected frame for unknown session: {session_id} in organization {organization_id}")
+            return
+        if session_data.get('end_time'):
+            logger.warning(f"Rejected frame for ended session: {session_id} in organization {organization_id}")
             return
 
         # Process frame for video storage
@@ -904,7 +907,7 @@ def handle_live_frame(data):
             np_arr = np.frombuffer(frame_data, np.uint8)
             frame_decoded = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
             if frame_decoded is not None:
-                frame_decoded = cv2.resize(frame_decoded, (1280, 720), interpolation=cv2.INTER_LINEAR)
+                frame_decoded = cv2.resize(frame_decoded, (640, 360), interpolation=cv2.INTER_LINEAR)  # Reduced resolution
                 if len(frame_queues[session_id]) < MAX_FRAME_QUEUE_SIZE:
                     frame_queues[session_id].append(frame_decoded)
                     logger.debug(f"Processed and stored frame for session {session_id}, shape: {frame_decoded.shape}")
