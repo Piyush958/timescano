@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+
+{% block title %}User Details - TimeScano{% endblock %}
+
+{% block content %}
+
+<div class="container">
+    <h1>User Details: {{ user.username }}</h1>
+    
+    <a href="{{ url_for('superuser_dashboard') }}" class="btn btn-secondary">Back to Dashboard</a>
+
+    <div class="user-info-section">
+        <h2>User Information</h2>
+        <p><strong>Email:</strong> {{ user.email }}</p>
+        <p><strong>Role:</strong> {{ user.role | capitalize }}</p>
+        <p><strong>User ID:</strong> {{ user._id }}</p>
+        <p><strong>Organization ID:</strong> {{ user.organization_id }}</p>
+        <p><strong>Total Sessions:</strong> {{ user.total_sessions }}</p>
+        <!-- Add more info/stats here as needed -->
+    </div>
+
+    <div class="sessions-section">
+        <h2>Sessions for {{ user.username }}</h2>
+        
+        <form method="GET" class="filter-form">
+            <div class="form-group">
+                <label for="date_filter">Date Filter:</label>
+                <input type="date" id="date_filter" name="date_filter" value="{{ date_filter }}">
+            </div>
+            <button type="submit" class="btn btn-primary">Filter</button>
+            <a href="{{ url_for('superuser_user_detail', user_id=user._id) }}" class="btn btn-secondary">Clear</a>
+        </form>
+
+        {% if sessions %}
+        <table class="sessions-table">
+            <thead>
+                <tr>
+                    <th>Start Time</th>
+                    <th>End Time</th>
+                    <th>Elapsed</th>
+                    <th>Idle Time</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for session in sessions %}
+                <tr>
+                    <td>{{ session.start_time }}</td>
+                    <td>{{ session.end_time }}</td>
+                    <td>{{ session.elapsed_time }}</td>
+                    <td>{{ session.idle_time }}</td>
+                    <td>
+                        <a href="{{ url_for('admin_session_detail', session_id=session._id) }}" class="btn btn-info">View</a>
+                        <form action="{{ url_for('delete_session_route', session_id=session._id) }}" method="POST" style="display:inline;">
+                            <button type="submit" class="btn btn-danger" onclick="return confirm('Are you sure?')">Delete</button>
+                        </form>
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="5">No sessions found</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p>No sessions available for this user.</p>
+        {% endif %}
+    </div>
+</div>
+
+{% endblock %}

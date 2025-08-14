@@ -1,0 +1,76 @@
+1. Landing Page
+   ├── Signup (Only for Superuser)
+   │     └── Creates Organization
+   │           └── Creates Superuser (role=superuser)
+   │                 └── Redirect to Superuser Dashboard
+   └── Login (For Superuser / Admin / User)
+         ├── Check Role
+         │     ├── Superuser → Superuser Dashboard
+         │     ├── Admin → Admin Dashboard
+         │     └── User → User Dashboard
+
+2. Superuser Dashboard
+   ├── View Org Activity (All Admins + Users)
+   ├── Create Admins (role=admin)
+   ├── Create Users (role=user)
+   ├── Manage Subscription (Upgrade to Pro)
+   └── ⚠️ Superuser NOT tracked
+
+3. Admin Dashboard (Tracked)
+   ├── View Personal Activity
+   ├── View All Users' Activity (same org)
+   ├── Add/Edit/Delete Users
+   ├── Delete Sessions / Screenshots
+   └── ⚠️ Cannot see Superuser or manage plan
+
+4. User Dashboard (Tracked)
+   ├── View Own Activity Data
+   ├── Delete Own Screenshots/Sessions
+   └── ⚠️ Cannot view/edit anyone else
+
+5. Desktop App (Installed on Admin/User Machines)
+   ├── Authenticates with Web Server
+   ├── Starts Tracking:
+   │     ├── Screenshots
+   │     ├── Website & App Usage
+   │     ├── Keyboard & Mouse Activity
+   │     ├── Session Time (Start/End)
+   │     └── [If Pro] Screen Video Recording
+   └── Sends Data to API (Web App)
+
+6. Web App / API
+   ├── Accepts Desktop Data
+   ├── Verifies Auth Token
+   ├── Stores in MongoDB:
+   │     ├── activities
+   │     ├── screenshots
+   │     ├── sessions
+   │     └── videos (Pro only)
+   └── Filters Everything by organization_id
+
+7. MongoDB Structure
+   ├── organizations
+   │     └── org_id, name, plan
+   ├── users
+   │     └── user_id, role, org_id
+   ├── activities
+   ├── screenshots
+   ├── sessions
+   ├── videos (only if Pro)
+   └── deletion_logs
+
+8. Deletion Flow
+   ├── Admin → Can delete own + users’ sessions/screenshots
+   ├── User → Can delete own only
+   └── Deletion = Permanent Data Loss
+         └── Affects Timeline, Reports
+
+9. Subscription Flow
+   ├── Superuser buys Pro Plan
+   └── Enables Video Tracking in Desktop App for that org
+
+10. Data Access Rules
+    ├── Each org’s data is isolated by organization_id
+    ├── Superuser has full visibility
+    ├── Admin sees users only
+    └── User sees self only

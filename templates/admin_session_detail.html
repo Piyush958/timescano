@@ -1,0 +1,455 @@
+
+{% extends "base.html" %}
+
+{% block title %}Session Details - TimeScano{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-12">
+        <!-- Header -->
+        <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center mb-4">
+            <div>
+                <h1 class="text-gradient mb-2">
+                    <i class="fas fa-chart-line me-3"></i>Live Session Monitor
+                </h1>
+                <p class="text-secondary mb-0">Real-time tracking and historical data</p>
+            </div>
+            <a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary mt-3 mt-md-0">
+                <i class="fas fa-arrow-left me-2"></i>Back to Dashboard
+            </a>
+        </div>
+
+        <!-- Live Stream Section -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="mb-0">
+                            <i class="fas fa-video me-2 text-gradient"></i>Live Stream Monitor
+                        </h3>
+                    </div>
+                    <div class="card-body">
+                        {% set session_ended = session.end_time and session.end_time != 'N/A' and session.end_time.strip() != '' and session.end_time != 'None' %}
+                        
+                        <div class="row">
+                            <div class="col-lg-8">
+                                <div class="position-relative">
+                                    {% if not session_ended %}
+                                    <div class="glass-effect rounded-3 p-4 text-center">
+                                        <img id="liveStreamImage" src="" alt="Live Stream" 
+                                             class="img-fluid rounded-3 border border-2 border-primary" 
+                                             style="max-width: 100%; height: auto; min-height: 300px; display: none; background-color: var(--card-bg);" />
+                                        
+                                        <div id="streamPlaceholder" class="d-flex flex-column align-items-center justify-content-center" style="min-height: 300px;">
+                                            <div class="loading mb-3"></div>
+                                            <h5 class="text-secondary">Connecting to live stream...</h5>
+                                            <p class="text-muted small">Please wait while we establish connection</p>
+                                        </div>
+                                    </div>
+                                    {% else %}
+                                    <div class="glass-effect rounded-3 p-5 text-center">
+                                        <i class="fas fa-stop-circle fa-4x text-secondary mb-3"></i>
+                                        <h4 class="text-secondary">Session Ended</h4>
+                                        <p class="text-muted">Live stream is no longer available</p>
+                                    </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            
+                            <div class="col-lg-4 mt-4 mt-lg-0">
+                                <div class="glass-effect rounded-3 p-4 h-100">
+                                    <h5 class="text-gradient mb-3">
+                                        <i class="fas fa-info-circle me-2"></i>Stream Status
+                                    </h5>
+                                    
+                                    <div class="mb-3">
+                                        <div class="d-flex align-items-center mb-2">
+                                            <div id="statusIndicator" class="bg-warning rounded-circle me-2" style="width: 12px; height: 12px;"></div>
+                                            <span id="liveStreamStatus" class="text-secondary">Initializing connection...</span>
+                                        </div>
+                                    </div>
+                                    
+                                    {% if not session_ended %}
+                                    <div class="d-grid gap-2">
+                                        <button id="reconnectButton" class="btn btn-primary btn-sm">
+                                            <i class="fas fa-sync-alt me-2"></i>Reconnect
+                                        </button>
+                                        <button id="testFrameButton" class="btn btn-secondary btn-sm">
+                                            <i class="fas fa-image me-2"></i>Test Frame
+                                        </button>
+                                    </div>
+                                    {% endif %}
+                                    
+                                    <hr class="my-3">
+                                    
+                                    <div class="small">
+                                        <div class="d-flex justify-content-between mb-2">
+                                            <span class="text-muted">Session ID:</span>
+                                            <code class="text-primary">{{ session._id[:8] }}...</code>
+                                        </div>
+                                        <div class="d-flex justify-content-between mb-2">
+                                            <span class="text-muted">User ID:</span>
+                                            <code class="text-info">{{ session.user_id[:8] }}...</code>
+                                        </div>
+                                        <div class="d-flex justify-content-between">
+                                            <span class="text-muted">Status:</span>
+                                            <span class="badge bg-{% if session_ended %}secondary{% else %}success{% endif %}">
+                                                {% if session_ended %}Ended{% else %}Active{% endif %}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        {% if has_video and session_ended %}
+                        <div class="mt-4">
+                            <h5 class="text-gradient mb-3">
+                                <i class="fas fa-history me-2"></i>Historical Recording
+                            </h5>
+                            <div class="glass-effect rounded-3 p-3">
+                                <video controls class="w-100 rounded-3">
+                                    <source src="{{ url_for('serve_video', filename=session.video_path | basename) }}" type="video/mp4">
+                                    Your browser does not support the video tag.
+                                </video>
+                            </div>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Session Information -->
+        <div class="row mb-4">
+            <div class="col-md-6 col-lg-3 mb-3">
+                <div class="card h-100">
+                    <div class="card-body text-center">
+                        <i class="fas fa-play-circle fa-2x text-success mb-3"></i>
+                        <h6 class="text-muted">Start Time</h6>
+                        <p class="mb-0 fw-bold">{{ session.start_time if session.start_time else 'N/A' }}</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6 col-lg-3 mb-3">
+                <div class="card h-100">
+                    <div class="card-body text-center">
+                        <i class="fas fa-stop-circle fa-2x text-danger mb-3"></i>
+                        <h6 class="text-muted">End Time</h6>
+                        <p class="mb-0 fw-bold">{{ session.end_time if session.end_time else 'Ongoing' }}</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6 col-lg-3 mb-3">
+                <div class="card h-100">
+                    <div class="card-body text-center">
+                        <i class="fas fa-clock fa-2x text-primary mb-3"></i>
+                        <h6 class="text-muted">Duration</h6>
+                        <p class="mb-0 fw-bold">{{ session.elapsed_time if session.elapsed_time else '00:00:00' }}</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6 col-lg-3 mb-3">
+                <div class="card h-100">
+                    <div class="card-body text-center">
+                        <i class="fas fa-pause-circle fa-2x text-warning mb-3"></i>
+                        <h6 class="text-muted">Idle Time</h6>
+                        <p class="mb-0 fw-bold">{{ session.idle_time if session.idle_time else '00:00:00' }}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <!-- Activities -->
+            <div class="col-lg-6 mb-4">
+                <div class="card h-100">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-list-alt me-2"></i>Recent Activities
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        {% if activities %}
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th><i class="fas fa-clock me-1"></i>Time</th>
+                                        <th><i class="fas fa-mouse-pointer me-1"></i>Activity</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for activity in activities %}
+                                    <tr>
+                                        <td>
+                                            <span class="badge bg-info">{{ activity.time }}</span>
+                                        </td>
+                                        <td>{{ activity.activity }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        {% else %}
+                        <div class="text-center py-4">
+                            <i class="fas fa-inbox fa-3x text-muted mb-3"></i>
+                            <p class="text-muted">No activities recorded for this session</p>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Breaks -->
+            <div class="col-lg-6 mb-4">
+                <div class="card h-100">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-coffee me-2"></i>Break History
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        {% if breaks %}
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th><i class="fas fa-play me-1"></i>Start</th>
+                                        <th><i class="fas fa-stop me-1"></i>End</th>
+                                        <th><i class="fas fa-hourglass-half me-1"></i>Duration</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for break in breaks %}
+                                    <tr>
+                                        <td>
+                                            <span class="badge bg-warning">{{ break.start }}</span>
+                                        </td>
+                                        <td>
+                                            <span class="badge bg-success">{{ break.end }}</span>
+                                        </td>
+                                        <td>{{ break.duration }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        {% else %}
+                        <div class="text-center py-4">
+                            <i class="fas fa-coffee fa-3x text-muted mb-3"></i>
+                            <p class="text-muted">No breaks taken during this session</p>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Screenshots -->
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-images me-2"></i>Screenshot Gallery
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        {% if screenshots %}
+                        <div class="row g-3">
+                            {% for screenshot in screenshots %}
+                            <div class="col-md-6 col-lg-4 col-xl-3">
+                                <div class="card screenshot-card h-100">
+                                    <div class="position-relative">
+                                        {% if screenshot.image_base64 %}
+                                        <img src="data:image/png;base64,{{ screenshot.image_base64 }}" 
+                                             alt="Screenshot" 
+                                             class="card-img-top screenshot-thumb" 
+                                             style="height: 200px; object-fit: cover; cursor: pointer;"
+                                             onclick="showScreenshot('{{ screenshot.image_base64 }}', '{{ screenshot.timestamp }}')" />
+                                        
+                                        <div class="position-absolute top-0 end-0 p-2">
+                                            <span class="badge bg-dark bg-opacity-75">
+                                                <i class="fas fa-clock me-1"></i>{{ screenshot.timestamp }}
+                                            </span>
+                                        </div>
+                                        {% else %}
+                                        <div class="d-flex align-items-center justify-content-center bg-secondary" style="height: 200px;">
+                                            <i class="fas fa-image fa-3x text-muted"></i>
+                                        </div>
+                                        {% endif %}
+                                    </div>
+                                    
+                                    <div class="card-body p-3">
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <small class="text-muted">{{ screenshot.timestamp }}</small>
+                                            {% if is_admin %}
+                                            <a href="{{ url_for('delete_screenshot', session_id=session._id, screenshot_id=screenshot._id) }}"
+                                               class="btn btn-outline-danger btn-sm"
+                                               onclick="return confirm('Delete this screenshot?');">
+                                                <i class="fas fa-trash"></i>
+                                            </a>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        
+                        {% if total_screenshots > 10 %}
+                        <div class="text-center mt-4">
+                            <a href="{{ url_for('admin_session_detail', session_id=session._id, page=page + 1) }}"
+                               class="btn btn-primary">
+                                <i class="fas fa-chevron-down me-2"></i>Load More Screenshots
+                            </a>
+                        </div>
+                        {% endif %}
+                        {% else %}
+                        <div class="text-center py-5">
+                            <i class="fas fa-camera fa-4x text-muted mb-3"></i>
+                            <h5 class="text-muted">No Screenshots Available</h5>
+                            <p class="text-muted">Screenshots will appear here once the session begins recording</p>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Screenshot Modal -->
+<div class="modal fade" id="screenshotModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content bg-dark border-0">
+            <div class="modal-header border-secondary">
+                <h5 class="modal-title text-gradient">
+                    <i class="fas fa-expand me-2"></i>Screenshot Preview
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-0">
+                <div class="text-center">
+                    <img id="fullScreenshot" src="" class="img-fluid" alt="Screenshot" />
+                </div>
+            </div>
+            <div class="modal-footer border-secondary">
+                <span id="screenshotTimestamp" class="text-muted"></span>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
+<script>
+    const socket = io({
+        transports: ['polling', 'websocket'],
+        timeout: 60000,
+        forceNew: true,
+        reconnection: true,
+        reconnectionDelay: 1000,
+        reconnectionAttempts: 5,
+        maxReconnectionAttempts: 5
+    });
+    
+    const sessionId = '{{ session._id }}';
+    const liveStreamImage = document.getElementById('liveStreamImage');
+    const statusElement = document.getElementById('liveStreamStatus');
+    const statusIndicator = document.getElementById('statusIndicator');
+    const streamPlaceholder = document.getElementById('streamPlaceholder');
+    const reconnectButton = document.getElementById('reconnectButton');
+    const testFrameButton = document.getElementById('testFrameButton');
+
+    function updateStatus(message, type = 'info') {
+        statusElement.innerText = message;
+        statusIndicator.className = `rounded-circle me-2`;
+        
+        switch(type) {
+            case 'success':
+                statusIndicator.classList.add('bg-success');
+                break;
+            case 'error':
+                statusIndicator.classList.add('bg-danger');
+                break;
+            case 'warning':
+                statusIndicator.classList.add('bg-warning');
+                break;
+            default:
+                statusIndicator.classList.add('bg-info');
+        }
+    }
+
+    socket.on('connect', () => {
+        console.log('Connected to Socket.IO server, SID:', socket.id);
+        updateStatus('Connecting to session...', 'info');
+        
+        socket.emit('join_session', {
+            session_id: sessionId,
+            user_id: '{{ session.user_id }}',
+            organization_id: '{{ session.get("organization_id", "") }}'
+        });
+    });
+
+    socket.on('joined_session', (data) => {
+        console.log('Joined session response:', data);
+        if (data.status === 'success') {
+            updateStatus('Connected, waiting for stream...', 'warning');
+        } else {
+            updateStatus(`Error: ${data.message}`, 'error');
+        }
+    });
+
+    socket.on('live_frame', (data) => {
+        try {
+            if (data.frame && data.session_id === sessionId) {
+                liveStreamImage.src = 'data:image/jpeg;base64,' + data.frame;
+                liveStreamImage.style.display = 'block';
+                if (streamPlaceholder) streamPlaceholder.style.display = 'none';
+                updateStatus(`Streaming (${data.timestamp})`, 'success');
+            }
+        } catch (error) {
+            console.error('Failed to render frame:', error);
+            updateStatus('Error: Failed to render frame', 'error');
+        }
+    });
+
+    socket.on('connect_error', (error) => {
+        console.error('SocketIO connection error:', error);
+        updateStatus(`Connection failed - ${error.message || 'Unknown error'}`, 'error');
+    });
+
+    socket.on('session_ended', (data) => {
+        console.log('Session ended:', data);
+        updateStatus('Session ended', 'warning');
+        liveStreamImage.style.display = 'none';
+        if (streamPlaceholder) streamPlaceholder.style.display = 'block';
+    });
+
+    if (reconnectButton) {
+        reconnectButton.addEventListener('click', () => {
+            updateStatus('Reconnecting...', 'info');
+            socket.connect();
+        });
+    }
+
+    if (testFrameButton) {
+        testFrameButton.addEventListener('click', () => {
+            liveStreamImage.src = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAAAAAAAD/4QAuRXhpZgAATU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAAqACAAQAAAABAAAAAqADAAQAAAABAAAAAAABAA==';
+            liveStreamImage.style.display = 'block';
+            if (streamPlaceholder) streamPlaceholder.style.display = 'none';
+            updateStatus('Test frame loaded', 'success');
+        });
+    }
+
+    function showScreenshot(imageBase64, timestamp) {
+        const modal = new bootstrap.Modal(document.getElementById('screenshotModal'));
+        document.getElementById('fullScreenshot').src = `data:image/png;base64,${imageBase64}`;
+        document.getElementById('screenshotTimestamp').textContent = timestamp;
+        modal.show();
+    }
+</script>
+{% endblock %}

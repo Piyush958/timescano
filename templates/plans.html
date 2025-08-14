@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+
+{% block title %}Subscription Plans - TimeScano{% endblock %}
+
+{% block content %}
+
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="mb-0"><i class="fas fa-money-bill-wave me-2"></i>Organization Subscription Plans</h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="card mb-4">
+                        <div class="card-body">
+                            <h5 class="card-title">Free Plan</h5>
+                            <ul>
+                                <li>Basic time tracking</li>
+                                <li>Screenshots</li>
+                                <li>Video recording & saving</li>
+                            </ul>
+                            <h4>$0 / month</h4>
+                            {% if subscription_active %}
+                            <p class="text-success">Downgrade Not Available</p>
+                            {% else %}
+                            <p class="text-muted">Current Plan</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card mb-4">
+                        <div class="card-body">
+                            <h5 class="card-title">Pro Plan</h5>
+                            <ul>
+                                <li>All Free features</li>
+                                <li>Video recording & saving</li>
+                                <li>Advanced analytics (coming soon)</li>
+                            </ul>
+                            <h4>$10 / month</h4>
+                            {% if subscription_active %}
+                            <p class="text-success">Current Plan</p>
+                            {% else %}
+                            <a href="{{ url_for('checkout', plan='pro') }}" class="btn btn-primary">Subscribe Now</a>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+{% endblock %}

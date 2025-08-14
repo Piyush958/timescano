@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+
+{% block title %}Checkout - TimeScano{% endblock %}
+
+{% block content %}
+
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="mb-0"><i class="fas fa-shopping-cart me-2"></i>Checkout: Pro Plan</h5>
+        </div>
+        <div class="card-body">
+            <h4>Plan: Pro</h4>
+            <p><strong>Amount:</strong> $10 / month</p>
+            <form method="POST">
+                <div class="mb-3">
+                    <label class="form-label">Payment Method</label>
+                    <div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="payment_method" id="credit_card" value="credit_card" checked>
+                            <label class="form-check-label" for="credit_card">Credit Card</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="payment_method" id="paypal" value="paypal">
+                            <label class="form-check-label" for="paypal">PayPal</label>
+                        </div>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label for="coupon" class="form-label">Coupon Code</label>
+                    <input type="text" class="form-control" id="coupon" name="coupon">
+                </div>
+                <button type="submit" class="btn btn-primary">Complete Purchase</button>
+            </form>
+            <p class="text-muted mt-3">Real payment gateway integration coming soon. Use coupon for testing.</p>
+        </div>
+    </div>
+
+{% endblock %}

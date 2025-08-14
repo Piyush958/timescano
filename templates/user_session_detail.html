@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+
+{% block title %}User Session Details - TimeScano{% endblock %}
+
+{% block content %}
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1><i class="fas fa-clock me-2"></i>User Session Details - User View</h1>
+        <div>
+            <a href="{{ url_for('user_dashboard') }}" class="btn btn-secondary">
+                <i class="fas fa-arrow-left me-2"></i>Back to User Dashboard
+            </a>
+        </div>
+    </div>
+
+    <!-- Session Information -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="mb-0"><i class="fas fa-info-circle me-2"></i>Session Information</h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <p><strong>Start Time:</strong> {{ session.start_time if session.start_time else 'N/A' }}</p>
+                    <p><strong>End Time:</strong> {{ session.end_time if session.end_time else 'N/A' }}</p>
+                </div>
+                <div class="col-md-6">
+                    <p><strong>Elapsed Time:</strong> {{ session.elapsed_time if session.elapsed_time else '00:00:00' }}</p>
+                    <p><strong>Idle Time:</strong> {{ session.idle_time if session.idle_time else '00:00:00' }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Activities -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="mb-0"><i class="fas fa-list me-2"></i>Activities</h5>
+        </div>
+        <div class="card-body">
+            {% if activities %}
+            <div class="table-responsive">
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Activity</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for activity in activities %}
+                        <tr>
+                            <td>{{ activity.time }}</td>
+                            <td>{{ activity.activity }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="text-muted">No activities logged for this session.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Breaks -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="mb-0"><i class="fas fa-coffee me-2"></i>Breaks</h5>
+        </div>
+        <div class="card-body">
+            {% if breaks %}
+            <div class="table-responsive">
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>Start</th>
+                            <th>End</th>
+                            <th>Duration</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for break in breaks %}
+                        <tr>
+                            <td>{{ break.start }}</td>
+                            <td>{{ break.end }}</td>
+                            <td>{{ break.duration }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="text-muted">No breaks taken during this session.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Screenshots -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="mb-0"><i class="fas fa-camera me-2"></i>Screenshots</h5>
+        </div>
+        <div class="card-body">
+            {% if screenshots %}
+            <div class="row">
+                {% for screenshot in screenshots %}
+                <div class="col-md-4 mb-3">
+                    <div class="card">
+                        <div class="card-img-top screenshot-thumb">
+                            <img src="data:image/png;base64,{{ screenshot.image_base64 }}" class="card-img-top screenshot-thumb" alt="Screenshot" style="height: 200px; object-fit: cover; cursor: pointer;" onclick="showScreenshot('{{ screenshot.image_base64 }}', '{{ screenshot.timestamp }}')">
+                        </div>
+                        <div class="card-body">
+                            <p class="card-text">
+                                <small class="text-muted">{{ screenshot.timestamp }}</small>
+                            </p>
+                            <form method="POST" action="{{ url_for('delete_screenshot_route', screenshot_id=screenshot._id) }}" onsubmit="return confirm('Are you sure you want to delete this screenshot?')">
+                                <button type="submit" class="btn btn-sm btn-outline-danger">
+                                    <i class="fas fa-trash me-1"></i>Delete
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="text-muted">No screenshots available for this session.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Screenshot Modal -->
+    <div class="modal fade" id="screenshotModal" tabindex="-1" aria-labelledby="screenshotModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="screenshotModalLabel">Screenshot</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body text-center">
+                    <img id="fullScreenshot" src="" class="img-fluid" alt="Screenshot">
+                    <p id="screenshotTimestamp" class="mt-2 text-muted"></p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+function showScreenshot(imageBase64, timestamp) {
+    const modal = new bootstrap.Modal(document.getElementById('screenshotModal'));
+    document.getElementById('fullScreenshot').src = `data:image/png;base64,${imageBase64}`;
+    document.getElementById('screenshotTimestamp').textContent = timestamp;
+    modal.show();
+}
+</script>
+{% endblock %}

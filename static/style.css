@@ -1,0 +1,72 @@
+/* Custom styles for TimeScano Dashboard */
+
+.screenshot-thumb {
+    transition: transform 0.2s;
+}
+
+.screenshot-thumb:hover {
+    transform: scale(1.05);
+}
+
+.card {
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+    transition: box-shadow 0.2s;
+}
+
+.card:hover {
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+}
+
+.navbar-brand {
+    font-weight: 600;
+}
+
+.table {
+    font-size: 0.9rem;
+}
+
+.btn-sm {
+    font-size: 0.75rem;
+}
+
+.alert {
+    border-radius: 0.375rem;
+}
+
+.form-control, .form-select {
+    border-radius: 0.375rem;
+}
+
+.card-header {
+    background-color: var(--bs-gray-100);
+    border-bottom: 1px solid var(--bs-border-color);
+}
+
+.text-muted {
+    color: var(--bs-secondary) !important;
+}
+
+/* Dark mode adjustments */
+[data-bs-theme="dark"] .card-header {
+    background-color: var(--bs-gray-900);
+}
+
+[data-bs-theme="dark"] .table {
+    --bs-table-bg: transparent;
+}
+
+[data-bs-theme="dark"] .table-striped > tbody > tr:nth-of-type(odd) > td {
+    background-color: rgba(255, 255, 255, 0.05);
+}
+
+/* Responsive improvements */
+@media (max-width: 768px) {
+    .table-responsive {
+        font-size: 0.8rem;
+    }
+    
+    .btn-sm {
+        font-size: 0.7rem;
+        padding: 0.25rem 0.5rem;
+    }
+}
